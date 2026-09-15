@@ -1,0 +1,740 @@
+-- ============================================================
+-- TEXT-TO-SQL DEMO DATABASE
+-- Domain: E-commerce / Order Management
+-- PostgreSQL
+-- ============================================================
+
+
+-- ============================================================
+-- 1. CATEGORIES
+-- ============================================================
+
+CREATE TABLE categories (
+    id BIGSERIAL PRIMARY KEY,
+
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMPTZ,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+
+    CONSTRAINT uq_categories_name UNIQUE (name)
+);
+
+
+-- ============================================================
+-- 2. CUSTOMERS
+-- ============================================================
+
+CREATE TABLE customers (
+    id BIGSERIAL PRIMARY KEY,
+
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    phone VARCHAR(20),
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMPTZ,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+
+    CONSTRAINT uq_customers_email UNIQUE (email)
+);
+
+
+-- ============================================================
+-- 3. ADDRESSES
+-- ============================================================
+
+CREATE TABLE addresses (
+    id BIGSERIAL PRIMARY KEY,
+
+    customer_id BIGINT NOT NULL,
+
+    address_type VARCHAR(20) NOT NULL DEFAULT 'shipping',
+    address_line_1 VARCHAR(255) NOT NULL,
+    address_line_2 VARCHAR(255),
+    city VARCHAR(100) NOT NULL,
+    state VARCHAR(100),
+    country VARCHAR(100) NOT NULL,
+    postal_code VARCHAR(20) NOT NULL,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMPTZ,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+
+    CONSTRAINT fk_addresses_customer
+        FOREIGN KEY (customer_id)
+        REFERENCES customers(id)
+);
+
+
+-- ============================================================
+-- 4. PRODUCTS
+-- ============================================================
+
+CREATE TABLE products (
+    id BIGSERIAL PRIMARY KEY,
+
+    category_id BIGINT NOT NULL,
+
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    price NUMERIC(12, 2) NOT NULL,
+    stock_quantity INTEGER NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMPTZ,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+
+    CONSTRAINT fk_products_category
+        FOREIGN KEY (category_id)
+        REFERENCES categories(id),
+
+    CONSTRAINT chk_products_price
+        CHECK (price >= 0),
+
+    CONSTRAINT chk_products_stock
+        CHECK (stock_quantity >= 0)
+);
+
+
+-- ============================================================
+-- 5. ORDERS
+-- ============================================================
+
+CREATE TABLE orders (
+    id BIGSERIAL PRIMARY KEY,
+
+    customer_id BIGINT NOT NULL,
+    shipping_address_id BIGINT,
+
+    order_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    status VARCHAR(30) NOT NULL DEFAULT 'pending',
+
+    total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMPTZ,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+
+    CONSTRAINT fk_orders_customer
+        FOREIGN KEY (customer_id)
+        REFERENCES customers(id),
+
+    CONSTRAINT fk_orders_shipping_address
+        FOREIGN KEY (shipping_address_id)
+        REFERENCES addresses(id),
+
+    CONSTRAINT chk_orders_total_amount
+        CHECK (total_amount >= 0),
+
+    CONSTRAINT chk_orders_status
+        CHECK (
+            status IN (
+                'pending',
+                'confirmed',
+                'processing',
+                'shipped',
+                'delivered',
+                'cancelled'
+            )
+        )
+);
+
+
+-- ============================================================
+-- 6. ORDER ITEMS
+-- ============================================================
+
+CREATE TABLE order_items (
+    id BIGSERIAL PRIMARY KEY,
+
+    order_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
+
+    quantity INTEGER NOT NULL,
+    unit_price NUMERIC(12, 2) NOT NULL,
+    subtotal NUMERIC(12, 2) NOT NULL,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMPTZ,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+
+    CONSTRAINT fk_order_items_order
+        FOREIGN KEY (order_id)
+        REFERENCES orders(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_order_items_product
+        FOREIGN KEY (product_id)
+        REFERENCES products(id),
+
+    CONSTRAINT chk_order_items_quantity
+        CHECK (quantity > 0),
+
+    CONSTRAINT chk_order_items_unit_price
+        CHECK (unit_price >= 0),
+
+    CONSTRAINT chk_order_items_subtotal
+        CHECK (subtotal >= 0),
+
+    CONSTRAINT uq_order_items_order_product
+        UNIQUE (order_id, product_id)
+);
+
+
+-- ============================================================
+-- 7. PAYMENTS
+-- ============================================================
+
+CREATE TABLE payments (
+    id BIGSERIAL PRIMARY KEY,
+
+    order_id BIGINT NOT NULL,
+
+    payment_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    amount NUMERIC(12, 2) NOT NULL,
+
+    payment_method VARCHAR(30) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'pending',
+
+    transaction_reference VARCHAR(100),
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMPTZ,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+
+    CONSTRAINT fk_payments_order
+        FOREIGN KEY (order_id)
+        REFERENCES orders(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT chk_payments_amount
+        CHECK (amount >= 0),
+
+    CONSTRAINT chk_payments_method
+        CHECK (
+            payment_method IN (
+                'credit_card',
+                'debit_card',
+                'upi',
+                'net_banking',
+                'wallet',
+                'cash_on_delivery'
+            )
+        ),
+
+    CONSTRAINT chk_payments_status
+        CHECK (
+            status IN (
+                'pending',
+                'completed',
+                'failed',
+                'refunded'
+            )
+        ),
+
+    CONSTRAINT uq_payments_transaction_reference
+        UNIQUE (transaction_reference)
+);
+
+
+-- ============================================================
+-- INDEXES
+-- ============================================================
+
+CREATE INDEX idx_addresses_customer_id
+    ON addresses(customer_id);
+
+CREATE INDEX idx_products_category_id
+    ON products(category_id);
+
+CREATE INDEX idx_orders_customer_id
+    ON orders(customer_id);
+
+CREATE INDEX idx_orders_order_date
+    ON orders(order_date);
+
+CREATE INDEX idx_orders_status
+    ON orders(status);
+
+CREATE INDEX idx_order_items_order_id
+    ON order_items(order_id);
+
+CREATE INDEX idx_order_items_product_id
+    ON order_items(product_id);
+
+CREATE INDEX idx_payments_order_id
+    ON payments(order_id);
+
+CREATE INDEX idx_payments_payment_date
+    ON payments(payment_date);
+
+
+-- ============================================================
+-- VERIFY TABLES
+-- ============================================================
+
+SELECT table_name
+FROM information_schema.tables
+WHERE table_schema = 'public'
+ORDER BY table_name;
+
+-- ============================================================
+-- TEXT-TO-SQL DEMO DATABASE
+-- SEED DATA
+-- ============================================================
+
+
+-- ============================================================
+-- 1. CATEGORIES
+-- ============================================================
+
+INSERT INTO categories (name, description)
+VALUES
+    ('Electronics', 'Electronic devices and accessories'),
+    ('Laptops', 'Laptops and portable computers'),
+    ('Mobile Phones', 'Smartphones and mobile devices'),
+    ('Home Appliances', 'Appliances for home and kitchen'),
+    ('Furniture', 'Home and office furniture'),
+    ('Accessories', 'Computer and mobile accessories');
+
+
+-- ============================================================
+-- 2. CUSTOMERS
+-- ============================================================
+
+INSERT INTO customers
+    (first_name, last_name, email, phone)
+VALUES
+    ('Hiren', 'Chavda', 'hiren.chavda@example.com', '+919876543201'),
+    ('Rahul', 'Patel', 'rahul.patel@example.com', '+919876543202'),
+    ('Priya', 'Shah', 'priya.shah@example.com', '+919876543203'),
+    ('Amit', 'Joshi', 'amit.joshi@example.com', '+919876543204'),
+    ('Neha', 'Mehta', 'neha.mehta@example.com', '+919876543205'),
+    ('Raj', 'Desai', 'raj.desai@example.com', '+919876543206'),
+    ('Kiran', 'Parmar', 'kiran.parmar@example.com', '+919876543207'),
+    ('Anjali', 'Trivedi', 'anjali.trivedi@example.com', '+919876543208'),
+    ('Vivek', 'Rana', 'vivek.rana@example.com', '+919876543209'),
+    ('Pooja', 'Bhatt', 'pooja.bhatt@example.com', '+919876543210'),
+    ('Nikhil', 'Vyas', 'nikhil.vyas@example.com', '+919876543211'),
+    ('Riya', 'Pandya', 'riya.pandya@example.com', '+919876543212'),
+    ('Sagar', 'Dave', 'sagar.dave@example.com', '+919876543213'),
+    ('Mehul', 'Thakkar', 'mehul.thakkar@example.com', '+919876543214'),
+    ('Sneha', 'Mistry', 'sneha.mistry@example.com', '+919876543215');
+
+
+-- ============================================================
+-- 3. ADDRESSES
+-- ============================================================
+
+INSERT INTO addresses
+    (
+        customer_id,
+        address_type,
+        address_line_1,
+        address_line_2,
+        city,
+        state,
+        country,
+        postal_code,
+        is_default
+    )
+VALUES
+    (1, 'shipping', '12 Green Park', NULL, 'Rajkot', 'Gujarat', 'India', '360001', TRUE),
+    (1, 'billing', '12 Green Park', NULL, 'Rajkot', 'Gujarat', 'India', '360001', FALSE),
+
+    (2, 'shipping', '45 Shastri Nagar', 'Near City Mall', 'Ahmedabad', 'Gujarat', 'India', '380015', TRUE),
+    (2, 'billing', '45 Shastri Nagar', 'Near City Mall', 'Ahmedabad', 'Gujarat', 'India', '380015', FALSE),
+
+    (3, 'shipping', '21 Satellite Road', NULL, 'Ahmedabad', 'Gujarat', 'India', '380054', TRUE),
+
+    (4, 'shipping', '8 University Road', NULL, 'Rajkot', 'Gujarat', 'India', '360005', TRUE),
+
+    (5, 'shipping', '17 Ring Road', 'Block A', 'Surat', 'Gujarat', 'India', '395002', TRUE),
+    (5, 'billing', '17 Ring Road', 'Block A', 'Surat', 'Gujarat', 'India', '395002', FALSE),
+
+    (6, 'shipping', '33 MG Road', NULL, 'Vadodara', 'Gujarat', 'India', '390001', TRUE),
+
+    (7, 'shipping', '9 Station Road', NULL, 'Jamnagar', 'Gujarat', 'India', '361001', TRUE),
+
+    (8, 'shipping', '76 Law Garden', NULL, 'Ahmedabad', 'Gujarat', 'India', '380006', TRUE),
+
+    (9, 'shipping', '14 Civil Lines', NULL, 'Jaipur', 'Rajasthan', 'India', '302006', TRUE),
+
+    (10, 'shipping', '25 Koregaon Park', NULL, 'Pune', 'Maharashtra', 'India', '411001', TRUE),
+
+    (11, 'shipping', '42 Indiranagar', NULL, 'Bengaluru', 'Karnataka', 'India', '560038', TRUE),
+
+    (12, 'shipping', '18 Salt Lake', NULL, 'Kolkata', 'West Bengal', 'India', '700091', TRUE),
+
+    (13, 'shipping', '61 Banjara Hills', NULL, 'Hyderabad', 'Telangana', 'India', '500034', TRUE),
+
+    (14, 'shipping', '29 Andheri West', NULL, 'Mumbai', 'Maharashtra', 'India', '400058', TRUE),
+
+    (15, 'shipping', '7 Vesu Main Road', NULL, 'Surat', 'Gujarat', 'India', '395007', TRUE),
+
+    (3, 'shipping', '5 SG Highway', NULL, 'Ahmedabad', 'Gujarat', 'India', '380060', FALSE),
+
+    (6, 'shipping', '19 Alkapuri', NULL, 'Vadodara', 'Gujarat', 'India', '390007', FALSE),
+
+    (10, 'billing', '25 Koregaon Park', NULL, 'Pune', 'Maharashtra', 'India', '411001', FALSE);
+
+
+-- ============================================================
+-- 4. PRODUCTS
+-- ============================================================
+
+INSERT INTO products
+    (
+        category_id,
+        name,
+        description,
+        price,
+        stock_quantity,
+        is_active
+    )
+VALUES
+    -- Electronics
+    (1, 'Wireless Bluetooth Speaker', 'Portable Bluetooth speaker with stereo sound', 2499.00, 75, TRUE),
+    (1, 'Smart LED Monitor 27', '27-inch Full HD smart monitor', 18999.00, 30, TRUE),
+    (1, 'Mechanical Keyboard', 'RGB mechanical keyboard for desktop users', 3499.00, 100, TRUE),
+    (1, 'Wireless Mouse', 'Ergonomic wireless mouse', 1299.00, 150, TRUE),
+
+    -- Laptops
+    (2, 'Dell Inspiron 15', '15-inch business laptop', 65999.00, 20, TRUE),
+    (2, 'HP Pavilion 14', '14-inch performance laptop', 72999.00, 15, TRUE),
+    (2, 'Lenovo ThinkBook 14', 'Business laptop with 16GB RAM', 68999.00, 18, TRUE),
+    (2, 'MacBook Air M3', 'Apple MacBook Air with M3 chip', 109999.00, 10, TRUE),
+    (2, 'ASUS Vivobook 15', '15-inch productivity laptop', 57999.00, 25, TRUE),
+
+    -- Mobile Phones
+    (3, 'Samsung Galaxy S24', 'Flagship Android smartphone', 74999.00, 22, TRUE),
+    (3, 'Google Pixel 9', 'Google flagship smartphone', 79999.00, 17, TRUE),
+    (3, 'OnePlus 13', 'High-performance Android smartphone', 69999.00, 25, TRUE),
+    (3, 'iPhone 16', 'Apple smartphone with latest chipset', 79999.00, 14, TRUE),
+    (3, 'Nothing Phone 3', 'Modern Android smartphone', 44999.00, 30, TRUE),
+
+    -- Home Appliances
+    (4, 'Air Purifier', 'HEPA air purifier for home use', 12999.00, 40, TRUE),
+    (4, 'Robot Vacuum Cleaner', 'Smart robotic vacuum cleaner', 24999.00, 12, TRUE),
+    (4, 'Microwave Oven', 'Convection microwave oven', 15999.00, 35, TRUE),
+    (4, 'Electric Kettle', '1.5L stainless steel electric kettle', 1799.00, 80, TRUE),
+
+    -- Furniture
+    (5, 'Office Chair', 'Ergonomic adjustable office chair', 8999.00, 45, TRUE),
+    (5, 'Study Table', 'Compact wooden study table', 7499.00, 25, TRUE),
+    (5, 'Bookshelf', 'Five-level wooden bookshelf', 5999.00, 30, TRUE),
+    (5, 'Sofa Set', 'Three-seat premium sofa set', 45999.00, 8, TRUE),
+
+    -- Accessories
+    (6, 'USB-C Hub', 'Multi-port USB-C connectivity hub', 2499.00, 90, TRUE),
+    (6, 'Laptop Backpack', 'Water-resistant laptop backpack', 1999.00, 120, TRUE),
+    (6, 'Wireless Earbuds', 'Noise-cancelling wireless earbuds', 5999.00, 60, TRUE),
+
+    -- Inactive product for testing
+    (6, 'Old USB Cable', 'Discontinued USB charging cable', 399.00, 0, FALSE);
+
+
+-- ============================================================
+-- 5. ORDERS
+-- ============================================================
+
+INSERT INTO orders
+    (
+        customer_id,
+        shipping_address_id,
+        order_date,
+        status,
+        total_amount
+    )
+VALUES
+    (1, 1, '2025-10-05 10:15:00+05:30', 'delivered', 69498.00),
+    (2, 3, '2025-10-18 14:20:00+05:30', 'delivered', 79999.00),
+    (3, 5, '2025-11-02 09:45:00+05:30', 'delivered', 5998.00),
+    (4, 6, '2025-11-15 16:30:00+05:30', 'cancelled', 12999.00),
+    (5, 7, '2025-12-01 11:10:00+05:30', 'delivered', 8999.00),
+
+    (6, 9, '2025-12-12 13:25:00+05:30', 'delivered', 72999.00),
+    (7, 10, '2025-12-20 17:40:00+05:30', 'shipped', 24999.00),
+    (8, 11, '2026-01-04 10:05:00+05:30', 'delivered', 109999.00),
+    (9, 12, '2026-01-12 12:50:00+05:30', 'delivered', 79999.00),
+    (10, 13, '2026-01-21 15:15:00+05:30', 'processing', 12998.00),
+
+    (1, 1, '2026-02-03 09:30:00+05:30', 'delivered', 75498.00),
+    (2, 3, '2026-02-11 18:10:00+05:30', 'delivered', 68999.00),
+    (3, 5, '2026-02-18 11:40:00+05:30', 'delivered', 17497.00),
+    (4, 6, '2026-02-25 14:55:00+05:30', 'confirmed', 44999.00),
+    (5, 7, '2026-03-02 10:20:00+05:30', 'delivered', 15999.00),
+
+    (6, 9, '2026-03-10 16:45:00+05:30', 'delivered', 9498.00),
+    (7, 10, '2026-03-18 13:10:00+05:30', 'cancelled', 65999.00),
+    (8, 11, '2026-03-25 17:20:00+05:30', 'delivered', 134998.00),
+    (9, 12, '2026-04-03 09:15:00+05:30', 'delivered', 69999.00),
+    (10, 13, '2026-04-12 14:35:00+05:30', 'shipped', 10498.00),
+
+    (1, 1, '2026-04-20 11:05:00+05:30', 'delivered', 45999.00),
+    (2, 3, '2026-05-01 12:25:00+05:30', 'delivered', 79999.00),
+    (3, 5, '2026-05-09 15:40:00+05:30', 'processing', 24999.00),
+    (4, 6, '2026-05-17 10:50:00+05:30', 'delivered', 18999.00),
+    (5, 7, '2026-06-02 16:15:00+05:30', 'delivered', 74999.00),
+
+    (6, 9, '2026-06-11 09:55:00+05:30', 'confirmed', 2499.00),
+    (8, 11, '2026-06-19 14:05:00+05:30', 'delivered', 8999.00),
+    (9, 12, '2026-07-03 11:30:00+05:30', 'delivered', 57999.00),
+    (10, 13, '2026-07-15 18:25:00+05:30', 'pending', 5999.00),
+    (11, 14, '2026-08-01 13:45:00+05:30', 'delivered', 2499.00);
+
+
+-- ============================================================
+-- 6. ORDER ITEMS
+-- ============================================================
+
+INSERT INTO order_items
+    (
+        order_id,
+        product_id,
+        quantity,
+        unit_price,
+        subtotal
+    )
+VALUES
+    -- Order 1
+    (1, 5, 1, 65999.00, 65999.00),
+    (1, 4, 1, 1299.00, 1299.00),
+    (1, 24, 1, 1999.00, 1999.00),
+    (1, 1, 1, 2499.00, 2499.00),
+
+    -- Order 2
+    (2, 13, 1, 79999.00, 79999.00),
+
+    -- Order 3
+    (3, 1, 1, 2499.00, 2499.00),
+    (3, 25, 1, 3499.00, 3499.00),
+
+    -- Order 4
+    (4, 15, 1, 12999.00, 12999.00),
+
+    -- Order 5
+    (5, 19, 1, 8999.00, 8999.00),
+
+    -- Order 6
+    (6, 6, 1, 72999.00, 72999.00),
+
+    -- Order 7
+    (7, 16, 1, 24999.00, 24999.00),
+
+    -- Order 8
+    (8, 8, 1, 109999.00, 109999.00),
+
+    -- Order 9
+    (9, 13, 1, 79999.00, 79999.00),
+
+    -- Order 10
+    (10, 15, 1, 12999.00, 12999.00),
+
+    -- Order 11
+    (11, 7, 1, 68999.00, 68999.00),
+    (11, 23, 1, 2499.00, 2499.00),
+    (11, 25, 1, 5999.00, 5999.00),
+    (11, 4, 1, 1299.00, 1299.00),
+
+    -- Order 12
+    (12, 7, 1, 68999.00, 68999.00),
+
+    -- Order 13
+    (13, 20, 1, 7499.00, 7499.00),
+    (13, 19, 1, 8999.00, 8999.00),
+    (13, 4, 1, 1299.00, 1299.00),
+
+    -- Order 14
+    (14, 22, 1, 44999.00, 44999.00),
+
+    -- Order 15
+    (15, 17, 1, 15999.00, 15999.00),
+
+    -- Order 16
+    (16, 19, 1, 8999.00, 8999.00),
+    (16, 4, 1, 1299.00, 1299.00),
+
+    -- Order 17
+    (17, 5, 1, 65999.00, 65999.00),
+
+    -- Order 18
+    (18, 8, 1, 109999.00, 109999.00),
+    (18, 13, 1, 79999.00, 79999.00),
+
+    -- Order 19
+    (19, 12, 1, 69999.00, 69999.00),
+
+    -- Order 20
+    (20, 1, 2, 2499.00, 4998.00),
+    (20, 4, 1, 1299.00, 1299.00),
+    (20, 24, 1, 1999.00, 1999.00),
+
+    -- Order 21
+    (21, 22, 1, 45999.00, 45999.00),
+
+    -- Order 22
+    (22, 13, 1, 79999.00, 79999.00),
+
+    -- Order 23
+    (23, 16, 1, 24999.00, 24999.00),
+
+    -- Order 24
+    (24, 2, 1, 18999.00, 18999.00),
+
+    -- Order 25
+    (25, 10, 1, 74999.00, 74999.00),
+
+    -- Order 26
+    (26, 1, 1, 2499.00, 2499.00),
+
+    -- Order 27
+    (27, 19, 1, 8999.00, 8999.00),
+
+    -- Order 28
+    (28, 9, 1, 57999.00, 57999.00),
+
+    -- Order 29
+    (29, 25, 1, 5999.00, 5999.00),
+
+    -- Order 30
+    (30, 1, 1, 2499.00, 2499.00);
+
+
+-- ============================================================
+-- 7. PAYMENTS
+-- ============================================================
+
+INSERT INTO payments
+    (
+        order_id,
+        payment_date,
+        amount,
+        payment_method,
+        status,
+        transaction_reference
+    )
+VALUES
+    (1,  '2025-10-05 10:20:00+05:30', 69498.00, 'credit_card', 'completed', 'TXN-10001'),
+    (2,  '2025-10-18 14:25:00+05:30', 79999.00, 'upi', 'completed', 'TXN-10002'),
+    (3,  '2025-11-02 09:50:00+05:30', 5998.00, 'debit_card', 'completed', 'TXN-10003'),
+    (4,  '2025-11-15 16:35:00+05:30', 12999.00, 'upi', 'refunded', 'TXN-10004'),
+    (5,  '2025-12-01 11:15:00+05:30', 8999.00, 'credit_card', 'completed', 'TXN-10005'),
+
+    (6,  '2025-12-12 13:30:00+05:30', 72999.00, 'net_banking', 'completed', 'TXN-10006'),
+    (7,  '2025-12-20 17:45:00+05:30', 24999.00, 'upi', 'completed', 'TXN-10007'),
+    (8,  '2026-01-04 10:10:00+05:30', 109999.00, 'credit_card', 'completed', 'TXN-10008'),
+    (9,  '2026-01-12 12:55:00+05:30', 79999.00, 'debit_card', 'completed', 'TXN-10009'),
+    (10, '2026-01-21 15:20:00+05:30', 12998.00, 'upi', 'completed', 'TXN-10010'),
+
+    (11, '2026-02-03 09:35:00+05:30', 75498.00, 'credit_card', 'completed', 'TXN-10011'),
+    (12, '2026-02-11 18:15:00+05:30', 68999.00, 'upi', 'completed', 'TXN-10012'),
+    (13, '2026-02-18 11:45:00+05:30', 17497.00, 'debit_card', 'completed', 'TXN-10013'),
+    (14, '2026-02-25 15:00:00+05:30', 44999.00, 'upi', 'completed', 'TXN-10014'),
+    (15, '2026-03-02 10:25:00+05:30', 15999.00, 'net_banking', 'completed', 'TXN-10015'),
+
+    (16, '2026-03-10 16:50:00+05:30', 9498.00, 'credit_card', 'completed', 'TXN-10016'),
+    (17, '2026-03-18 13:15:00+05:30', 65999.00, 'credit_card', 'refunded', 'TXN-10017'),
+    (18, '2026-03-25 17:25:00+05:30', 134998.00, 'credit_card', 'completed', 'TXN-10018'),
+    (19, '2026-04-03 09:20:00+05:30', 69999.00, 'upi', 'completed', 'TXN-10019'),
+    (20, '2026-04-12 14:40:00+05:30', 10498.00, 'debit_card', 'completed', 'TXN-10020'),
+
+    (21, '2026-04-20 11:10:00+05:30', 45999.00, 'net_banking', 'completed', 'TXN-10021'),
+    (22, '2026-05-01 12:30:00+05:30', 79999.00, 'upi', 'completed', 'TXN-10022'),
+    (23, '2026-05-09 15:45:00+05:30', 24999.00, 'credit_card', 'completed', 'TXN-10023'),
+    (24, '2026-05-17 10:55:00+05:30', 18999.00, 'debit_card', 'completed', 'TXN-10024'),
+    (25, '2026-06-02 16:20:00+05:30', 74999.00, 'credit_card', 'completed', 'TXN-10025'),
+
+    (26, '2026-06-11 10:00:00+05:30', 2499.00, 'upi', 'completed', 'TXN-10026'),
+    (27, '2026-06-19 14:10:00+05:30', 8999.00, 'cash_on_delivery', 'completed', 'TXN-10027'),
+    (28, '2026-07-03 11:35:00+05:30', 57999.00, 'net_banking', 'completed', 'TXN-10028'),
+    (29, '2026-07-15 18:30:00+05:30', 5999.00, 'upi', 'pending', 'TXN-10029'),
+    (30, '2026-08-01 13:50:00+05:30', 2499.00, 'upi', 'completed', 'TXN-10030');
+
+
+-- ============================================================
+-- 8. SOFT-DELETED TEST DATA
+-- ============================================================
+
+UPDATE customers
+SET
+    is_deleted = TRUE,
+    deleted_at = CURRENT_TIMESTAMP
+WHERE id = 15;
+
+UPDATE products
+SET
+    is_deleted = TRUE,
+    deleted_at = CURRENT_TIMESTAMP
+WHERE id = 26;
+
+
+-- ============================================================
+-- 9. VERIFY COUNTS
+-- ============================================================
+
+SELECT 'categories' AS table_name, COUNT(*) AS row_count
+FROM categories
+
+UNION ALL
+
+SELECT 'customers', COUNT(*)
+FROM customers
+
+UNION ALL
+
+SELECT 'addresses', COUNT(*)
+FROM addresses
+
+UNION ALL
+
+SELECT 'products', COUNT(*)
+FROM products
+
+UNION ALL
+
+SELECT 'orders', COUNT(*)
+FROM orders
+
+UNION ALL
+
+SELECT 'order_items', COUNT(*)
+FROM order_items
+
+UNION ALL
+
+SELECT 'payments', COUNT(*)
+FROM payments
+
+ORDER BY table_name;
+
+CREATE EXTENSION IF NOT EXISTS vector;
+
+SELECT extname, extversion
+FROM pg_extension
+WHERE extname = 'vector';
+
+CREATE TABLE IF NOT EXISTS schema_documents (
+    document_key TEXT PRIMARY KEY,
+    document_type TEXT NOT NULL,
+    content TEXT NOT NULL,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    embedding VECTOR(1024) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+    

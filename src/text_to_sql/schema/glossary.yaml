@@ -1,0 +1,45 @@
+terms:
+
+  total sales:
+    expression: "SUM(order_items.subtotal)"
+    description: "Total value of products sold."
+
+  revenue:
+    expression: "SUM(order_items.subtotal)"
+    description: "Sales revenue generated from order items."
+
+  customer spending:
+    expression: "SUM(order_items.subtotal)"
+    description: "Total value of products purchased by a customer."
+
+  average order value:
+    expression: "AVG(orders.total_amount)"
+    description: "Average monetary value of an order."
+
+  active customers:
+    expression: "customers.is_deleted = FALSE"
+    description: "Customers who have not been soft deleted."
+
+  active products:
+    expression: "products.is_deleted = FALSE AND products.is_active = TRUE"
+    description: "Products that are active and not soft deleted."
+
+  cancelled orders:
+    expression: "orders.status = 'cancelled'"
+    description: "Orders whose status is cancelled."
+
+  completed orders:
+    expression: "orders.status = 'delivered'"
+    description: "Orders that have been successfully delivered."
+
+  order count:
+    expression: "COUNT(DISTINCT orders.id)"
+    description: "Number of unique customer orders."
+
+  product count:
+    expression: "COUNT(DISTINCT products.id)"
+    description: "Number of unique products."
+
+  customer count:
+    expression: "COUNT(DISTINCT customers.id)"
+    description: "Number of unique customers."

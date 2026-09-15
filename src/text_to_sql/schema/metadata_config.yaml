@@ -1,0 +1,172 @@
+tables:
+  categories:
+    description: "Product categories for organizing items in the e-commerce system"
+    columns:
+      id:
+        description: "Unique identifier for the category"
+      name:
+        description: "Name of the category (e.g., Electronics, Laptops)"
+      description:
+        description: "Detailed description of what products belong to this category"
+      created_at:
+        description: "Timestamp when the category was created"
+      updated_at:
+        description: "Timestamp when the category was last updated"
+      deleted_at:
+        description: "Timestamp when the category was soft-deleted (null if active)"
+      is_deleted:
+        description: "Flag indicating if the category has been soft-deleted"
+
+  customers:
+    description: "Customer information including personal details and contact information"
+    columns:
+      id:
+        description: "Unique identifier for the customer"
+      first_name:
+        description: "Customer's first name"
+      last_name:
+        description: "Customer's last name"
+      email:
+        description: "Customer's email address (unique)"
+      phone:
+        description: "Customer's phone number"
+      created_at:
+        description: "Timestamp when the customer account was created"
+      updated_at:
+        description: "Timestamp when the customer information was last updated"
+      deleted_at:
+        description: "Timestamp when the customer was soft-deleted (null if active)"
+      is_deleted:
+        description: "Flag indicating if the customer has been soft-deleted"
+
+  addresses:
+    description: "Shipping and billing addresses for customers"
+    columns:
+      id:
+        description: "Unique identifier for the address"
+      customer_id:
+        description: "Foreign key reference to the customer who owns this address"
+      address_type:
+        description: "Type of address (shipping or billing)"
+      address_line_1:
+        description: "Primary address line (street address)"
+      address_line_2:
+        description: "Secondary address line (apartment, suite, etc.)"
+      city:
+        description: "City name"
+      state:
+        description: "State or province name"
+      country:
+        description: "Country name"
+      postal_code:
+        description: "Postal or ZIP code"
+      is_default:
+        description: "Flag indicating if this is the default address for the type"
+      created_at:
+        description: "Timestamp when the address was created"
+      updated_at:
+        description: "Timestamp when the address was last updated"
+      deleted_at:
+        description: "Timestamp when the address was soft-deleted (null if active)"
+      is_deleted:
+        description: "Flag indicating if the address has been soft-deleted"
+
+  products:
+    description: "Product catalog with pricing, inventory, and categorization details"
+    columns:
+      id:
+        description: "Unique identifier for the product"
+      category_id:
+        description: "Foreign key reference to the product's category"
+      name:
+        description: "Product name"
+      description:
+        description: "Detailed product description"
+      price:
+        description: "Current selling price of the product"
+      stock_quantity:
+        description: "Available inventory quantity"
+      is_active:
+        description: "Flag indicating if the product is currently available for sale"
+      created_at:
+        description: "Timestamp when the product was added to the catalog"
+      updated_at:
+        description: "Timestamp when the product information was last updated"
+      deleted_at:
+        description: "Timestamp when the product was soft-deleted (null if active)"
+      is_deleted:
+        description: "Flag indicating if the product has been soft-deleted"
+
+  orders:
+    description: "Customer orders containing order details, status, and shipping information"
+    columns:
+      id:
+        description: "Unique identifier for the order"
+      customer_id:
+        description: "Foreign key reference to the customer who placed the order"
+      shipping_address_id:
+        description: "Foreign key reference to the shipping address for this order"
+      order_date:
+        description: "Timestamp when the order was placed"
+      status:
+        description: "Current order status (pending, confirmed, processing, shipped, delivered, cancelled)"
+      total_amount:
+        description: "Total monetary value of the order"
+      created_at:
+        description: "Timestamp when the order record was created"
+      updated_at:
+        description: "Timestamp when the order information was last updated"
+      deleted_at:
+        description: "Timestamp when the order was soft-deleted (null if active)"
+      is_deleted:
+        description: "Flag indicating if the order has been soft-deleted"
+
+  order_items:
+    description: "Individual line items within an order, linking products to orders with quantities and prices"
+    columns:
+      id:
+        description: "Unique identifier for the order item"
+      order_id:
+        description: "Foreign key reference to the parent order"
+      product_id:
+        description: "Foreign key reference to the product being ordered"
+      quantity:
+        description: "Number of units of the product in this order"
+      unit_price:
+        description: "Price per unit at the time of order"
+      subtotal:
+        description: "Total price for this line item (quantity × unit_price)"
+      created_at:
+        description: "Timestamp when the order item was created"
+      updated_at:
+        description: "Timestamp when the order item was last updated"
+      deleted_at:
+        description: "Timestamp when the order item was soft-deleted (null if active)"
+      is_deleted:
+        description: "Flag indicating if the order item has been soft-deleted"
+
+  payments:
+    description: "Payment transactions associated with orders, including payment method and status"
+    columns:
+      id:
+        description: "Unique identifier for the payment"
+      order_id:
+        description: "Foreign key reference to the order being paid for"
+      payment_date:
+        description: "Timestamp when the payment was processed"
+      amount:
+        description: "Payment amount"
+      payment_method:
+        description: "Method of payment (credit_card, debit_card, upi, net_banking, wallet, cash_on_delivery)"
+      status:
+        description: "Payment status (pending, completed, failed, refunded)"
+      transaction_reference:
+        description: "Unique reference identifier for the payment transaction"
+      created_at:
+        description: "Timestamp when the payment record was created"
+      updated_at:
+        description: "Timestamp when the payment information was last updated"
+      deleted_at:
+        description: "Timestamp when the payment was soft-deleted (null if active)"
+      is_deleted:
+        description: "Flag indicating if the payment has been soft-deleted"

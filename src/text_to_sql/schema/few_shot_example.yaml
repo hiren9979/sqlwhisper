@@ -1,0 +1,63 @@
+examples:
+
+  - id: 1
+    question: "List all active products."
+    sql: |
+      SELECT id, name, price
+      FROM products
+      WHERE is_active = TRUE
+        AND is_deleted = FALSE;
+
+  - id: 2
+    question: "How many active customers are there?"
+    sql: |
+      SELECT COUNT(*) AS customer_count
+      FROM customers
+      WHERE is_deleted = FALSE;
+
+  - id: 3
+    question: "Show all orders with customer names."
+    sql: |
+      SELECT
+          o.id AS order_id,
+          c.first_name,
+          c.last_name,
+          o.order_date,
+          o.status,
+          o.total_amount
+      FROM orders o
+      JOIN customers c
+          ON c.id = o.customer_id
+      WHERE o.is_deleted = FALSE
+        AND c.is_deleted = FALSE;
+
+  - id: 4
+    question: "Show the top 5 customers by spending."
+    sql: |
+      SELECT
+          c.id AS customer_id,
+          c.first_name,
+          c.last_name,
+          SUM(oi.subtotal) AS total_spending
+      FROM customers c
+      JOIN orders o
+          ON o.customer_id = c.id
+      JOIN order_items oi
+          ON oi.order_id = o.id
+      WHERE c.is_deleted = FALSE
+        AND o.is_deleted = FALSE
+        AND oi.is_deleted = FALSE
+      GROUP BY
+          c.id,
+          c.first_name,
+          c.last_name
+      ORDER BY total_spending DESC
+      LIMIT 5;
+
+  - id: 5
+    question: "How many orders have been delivered?"
+    sql: |
+      SELECT COUNT(*) AS order_count
+      FROM orders
+      WHERE status = 'delivered'
+        AND is_deleted = FALSE;
