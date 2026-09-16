@@ -182,27 +182,69 @@ be *demonstrably working* before moving to the next.
 - [ ] Convert `/chat` to stream intermediate state updates ("retrieving schema...", "generating SQL...") via Server-Sent Events.
 - [ ] Verify: client sees incremental status updates before the final answer arrives.
 
-### Phase 17 — React Chat UI
+### Phase 17 — Database Schema for Conversations
+- [ ] Create `conversations` table with `id`, `user_id`, `title`, `created_at`, `updated_at`, and `is_deleted`.
+- [ ] Create migration script or direct SQL to set up the table structure.
+- [ ] Verify: table exists with correct schema and indexes on `user_id` and `created_at`.
+
+### Phase 18 — Conversation Database Operations
+- [ ] `app/db/conversations.py` — CRUD operations: create conversation, list user's conversations, get conversation by ID, update title/timestamp, soft-delete conversation.
+- [ ] Implement conversation title auto-generation based on first message.
+- [ ] Verify: script tests all CRUD operations against the database.
+
+### Phase 19 — LangGraph Postgres Checkpointer Integration
+- [ ] Configure LangGraph `PostgresSaver` for persistent chat state using `conversation.id` as `thread_id`.
+- [ ] Update graph compilation to use `PostgresSaver` instead of `MemorySaver`.
+- [ ] Configure checkpointing to store conversation messages and state in PostgreSQL.
+- [ ] Verify: graph state persists across runs using the same `thread_id`.
+
+### Phase 20 — Agent State Enhancement for Conversations
+- [ ] Update `AgentState` to include `thread_id` and enhanced `messages` array for conversation history.
+- [ ] Ensure state schema supports conversation-level metadata.
+- [ ] Verify: state structure works with LangGraph checkpointing.
+
+### Phase 21 — Chat API with Conversation Support
+- [ ] Update `/chat` endpoint to accept optional `conversation_id` parameter.
+- [ ] Pass `conversation_id` as LangGraph `thread_id` for state persistence.
+- [ ] Handle conversation creation on first message if no `conversation_id` provided.
+- [ ] Verify: multiple messages with same `conversation_id` maintain conversation context.
+
+### Phase 22 — Conversation Management APIs
+- [ ] `POST /conversations` — create new conversation.
+- [ ] `GET /conversations` — list user's conversations (paginated).
+- [ ] `GET /conversations/{id}` — get conversation details and message history.
+- [ ] `DELETE /conversations/{id}` — soft-delete conversation.
+- [ ] `PUT /conversations/{id}` — update conversation title.
+- [ ] Verify: all endpoints work via curl/Postman with proper error handling.
+
+### Phase 23 — Conversation Isolation Testing
+- [ ] Create test script that sends messages to two different conversations.
+- [ ] Verify: conversation histories remain isolated from each other.
+- [ ] Verify: conversation list returns correct conversations per user.
+- [ ] Verify: soft-deleted conversations don't appear in lists.
+
+### Phase 24 — React Chat UI
 - [ ] Vite + React scaffold, Tailwind styling.
 - [ ] Message list, input box, send button.
 - [ ] Distinct bubble style for clarification questions.
 - [ ] Verify: basic chat renders, no backend wiring yet.
 
-### Phase 18 — React ↔ FastAPI Integration
-- [ ] Wire UI to `/chat`, maintain `thread_id` in local state across the conversation.
+### Phase 25 — React ↔ FastAPI Integration
+- [ ] Wire UI to `/chat`, maintain `conversation_id` in local state across the conversation.
+- [ ] Connect conversation list to the UI so users can create, select, and continue previous chats.
 - [ ] Correctly render multi-turn clarification exchanges.
 - [ ] Verify: full conversation works end-to-end in the browser.
 
-### Phase 19 — Show SQL / Result Toggle
+### Phase 26 — Show SQL / Result Toggle
 - [ ] Collapsible "View SQL & raw results" section under each answer bubble.
 - [ ] Verify: toggle shows correct SQL + table matching that specific answer.
 
-### Phase 20 — Logging & Observability
+### Phase 27 — Logging & Observability
 - [ ] Structured JSON logging at each LangGraph node: node name, input, output, duration.
-- [ ] Dump full run logs to `logs/`, keyed by `thread_id`.
+- [ ] Dump full run logs to `logs/`, keyed by `conversation_id`.
 - [ ] Verify: a full run produces a readable, complete log trail.
 
-### Phase 21 — Test Pass & Polish
+### Phase 28 — Test Pass & Polish
 - [ ] Run 10–15 varied test questions (clear, vague, multi-clarification, deliberately broken) end to end.
 - [ ] Fix rough edges in prompts, error messages, and UI states.
 - [ ] Write a short README covering setup, env vars, and how to run.

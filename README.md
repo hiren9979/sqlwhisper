@@ -6,6 +6,7 @@ A full-stack AI application that allows non-technical users to ask business ques
 
 Unlike traditional text-to-SQL systems that guess user intent, SQLWhisper actively detects ambiguous queries and asks for clarification before generating SQL. This ensures accurate query generation by understanding exactly what the user wants.
 
+
 ## ✅ Currently Implemented
 
 ### Phase 1-3: Database Foundation
