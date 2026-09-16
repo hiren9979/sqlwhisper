@@ -304,4 +304,499 @@ Generate Final Answer
 The important concept is that `interrupt()` does not terminate the workflow. It pauses the current graph execution and allows it to continue later with the user's response. `Command(resume=...)` provides that response when the graph is resumed.
 
 For Phase 9, we should therefore create `src/text_to_sql/graph/nodes/ask_clarification.py`, implement the interrupt/resume logic, and manually verify one complete pause → user response → resume → merge → ambiguity re-check flow before connecting the node to the full graph.
+
+
+### Phase 10 — SQL Generation Node
+
+File:
+`src/text_to_sql/graph/nodes/generate_sql.py`
+
+Why do we need this?
+
+After the user's question is clear (either originally or after clarification), we need to convert it into a valid PostgreSQL SQL query. This node takes the resolved user question and the relevant schema context (retrieved in Phase 6) to generate SQL.
+
+Working:
+
+Resolved User Question + Schema Context
+      ↓
+SQL Generation Node
+      ↓
+Groq LLM (llama3-70b-8192)
+      ↓
+SQL Query
+
+The node uses a detailed prompt that instructs the LLM to:
+- Generate PostgreSQL SQL only
+- Use only the tables, columns, and relationships from the schema context
+- Follow business definitions from the glossary
+- Use few-shot examples as guidance
+- Prefer explicit JOIN conditions
+- Respect soft-delete fields when indicated
+- Return exactly one SQL query
+
+The prompt includes:
+- The resolved user question
+- Relevant schema and business context (tables, columns, descriptions)
+- Relevant few-shot examples
+
+Output:
+`sql_query` → The generated PostgreSQL SQL query
+
+Example:
+
+User Question (after clarification):
+"Show me sales for current month."
+
+Schema Context:
+- orders table with order_date, amount columns
+- order_items table with subtotal column
+- Glossary: "sales" = SUM(order_items.subtotal)
+
+Generated SQL:
+```sql
+SELECT SUM(oi.subtotal) AS total_sales
+FROM orders o
+JOIN order_items oi ON o.id = oi.order_id
+WHERE o.order_date >= DATE_TRUNC('MONTH', CURRENT_TIMESTAMP)
+  AND o.order_date < DATE_TRUNC('MONTH', CURRENT_TIMESTAMP) + INTERVAL '1 MONTH'
+LIMIT 100
 ```
+
+Why use Groq llama3-70b-8192?
+
+SQL generation requires a more capable model than ambiguity detection. The model needs to understand complex schema relationships, business logic, and SQL syntax. Groq's llama3-70b-8192 provides good performance for this task.
+
+Note on Output Parsing:
+
+We use `StrOutputParser` to get the raw text response from the LLM, then extract the SQL from markdown code blocks if present. This avoids issues with tool calling that some models don't support well.
+
+
+### Phase 11 — SQL Validation Node
+
+File:
+`src/text_to_sql/graph/nodes/validate_sql.py`
+
+Why do we need this?
+
+Before executing SQL against the database, we need to validate that the generated SQL is safe and correct. This prevents:
+- SQL injection attacks
+- Invalid table/column references
+- Non-SELECT statements (we only allow SELECT for safety)
+- Syntax errors
+
+Working:
+
+Generated SQL Query
+      ↓
+SQL Validation Node
+      ↓
+sqlglot Parser
+      ↓
+Validate Statement Type (SELECT only)
+      ↓
+Validate Tables (exist in schema)
+      ↓
+Validate Columns (exist in tables)
+      ↓
+Add LIMIT (if not present)
+      ↓
+Validated SQL
+
+The node performs several validations:
+
+1. **Statement Type Check**: Only allows SELECT statements. Rejects INSERT, UPDATE, DELETE, DROP, etc.
+
+2. **Table Validation**: Checks that all referenced tables exist in the live database schema.
+
+3. **Column Validation**: Checks that all referenced columns exist in their respective tables, handling table aliases correctly.
+
+4. **Limit Addition**: Automatically adds a default LIMIT (100) if the query doesn't already have one, preventing runaway queries.
+
+Output:
+`sql_query` → The validated SQL query (with LIMIT added if needed)
+
+Example:
+
+Input SQL:
+```sql
+SELECT * FROM products WHERE is_active = TRUE
+```
+
+Validated Output:
+```sql
+SELECT * FROM products WHERE is_active = TRUE LIMIT 100
+```
+
+Invalid Example:
+
+Input SQL:
+```sql
+SELECT * FROM nonexistent_table
+```
+
+Error:
+`Unknown table(s): nonexistent_table`
+
+Why use sqlglot?
+
+sqlglot is a powerful SQL parser that can validate SQL syntax without executing it. It supports PostgreSQL dialect and provides detailed error messages.
+
+
+### Phase 12 — SQL Execution Node
+
+File:
+`src/text_to_sql/graph/nodes/execute_sql.py`
+
+Why do we need this?
+
+After validation, we need to execute the SQL against the actual PostgreSQL database to get the results. This node handles the database connection, query execution, and error handling.
+
+Working:
+
+Validated SQL Query
+      ↓
+SQL Execution Node
+      ↓
+Get Database Connection
+      ↓
+Set Query Timeout (5 seconds)
+      ↓
+Execute SQL
+      ↓
+Fetch Results
+      ↓
+Format as List of Dicts
+      ↓
+Return Results
+
+The node:
+- Uses the existing database connection from `db/connection.py`
+- Sets a statement timeout (5 seconds) to prevent long-running queries
+- Executes the SQL and fetches all results
+- Formats results as a list of dictionaries (column name → value)
+- Handles errors gracefully and returns error information
+
+Output:
+`sql_result` → List of dictionaries with query results
+`sql_error` → Error message if execution failed (empty string if successful)
+`retry_count` → Incremented if there was an error (for retry logic)
+
+Example:
+
+Input SQL:
+```sql
+SELECT id, name, price FROM products WHERE is_active = TRUE LIMIT 5
+```
+
+Output:
+```python
+{
+    "sql_result": [
+        {"id": 1, "name": "Wireless Speaker", "price": 2499.00},
+        {"id": 2, "name": "LED Monitor", "price": 18999.00},
+        ...
+    ],
+    "sql_error": ""
+}
+```
+
+Error Example:
+
+Input SQL:
+```sql
+SELECT invalid_column FROM products
+```
+
+Output:
+```python
+{
+    "sql_result": None,
+    "sql_error": "column \"invalid_column\" does not exist",
+    "retry_count": 1
+}
+```
+
+
+### Phase 13 — Answer Summarization Node
+
+File:
+`src/text_to_sql/graph/nodes/summarize_answer.py`
+
+Why do we need this?
+
+The SQL execution returns raw data (rows and columns). We need to convert this into a natural-language answer that directly addresses the user's question. This node takes the SQL results and generates a human-readable response.
+
+Working:
+
+User Question + SQL Results
+      ↓
+Answer Summarization Node
+      ↓
+Groq LLM (llama3-70b-8192)
+      ↓
+Natural Language Answer
+
+The node uses a prompt that instructs the LLM to:
+- Answer the user's original question directly
+- Use only the information present in the SQL result
+- Not invent, assume, or add information not in the result
+- Keep the answer concise and natural
+- If the result is empty, clearly say no matching data was found
+- Not mention SQL, database, query execution, or internal processing
+
+Output:
+`final_answer` → The natural-language answer to the user's question
+
+Example:
+
+User Question:
+"Show me sales for current month."
+
+SQL Result:
+```python
+[{"total_sales": Decimal('2499.00')}]
+```
+
+Final Answer:
+"Your total sales amount for last month was $2,499.00."
+
+Empty Result Example:
+
+User Question:
+"Show me orders from 2050."
+
+SQL Result:
+```python
+[]
+```
+
+Final Answer:
+"No matching data was found for orders from 2050."
+
+
+### Phase 14 — LangGraph Workflow Builder
+
+File:
+`src/text_to_sql/graph/build_graph.py`
+
+Why do we need this?
+
+Now that we have all the individual nodes, we need to connect them into a complete workflow using LangGraph. This phase defines the graph structure, nodes, edges, and conditional routing logic.
+
+Working:
+
+The graph is built as follows:
+
+```
+START
+  ↓
+retrieve_schema (Phase 6)
+  ↓
+check_ambiguity (Phase 8)
+  ↓
+  ├─ ambiguous → ask_clarification (Phase 9)
+  │                ↓
+  │            check_ambiguity (loop back)
+  │
+  └─ clear → generate_sql (Phase 10)
+              ↓
+          validate_sql (Phase 11)
+              ↓
+          execute_sql (Phase 12)
+              ↓
+          ├─ error → generate_sql (retry)
+          │           ↓
+          │       validate_sql
+          │           ↓
+          │       execute_sql
+          │
+          └─ success → summarize_answer (Phase 13)
+                        ↓
+                      END
+```
+
+Conditional Routing:
+
+1. **After Ambiguity Check** (`route_after_ambiguity`):
+   - If `ambiguity_check` is True → go to `ask_clarification`
+   - If `ambiguity_check` is False → go to `generate_sql`
+
+2. **After SQL Execution** (`route_after_execution`):
+   - If `sql_error` is present → go to `generate_sql` (retry)
+   - If `sql_error` is empty → go to `summarize_answer`
+
+Checkpointer:
+
+The graph uses `MemorySaver` as a checkpointer to maintain state across interrupts (for clarification). This allows the graph to pause and resume with the same state using a `thread_id`.
+
+**What is a Checkpointer?**
+
+A checkpointer is a mechanism in LangGraph that saves the state of the workflow at each node execution. It acts like a "save point" system for the graph.
+
+**Why do we need a Checkpointer?**
+
+Without a checkpointer:
+- The graph runs from start to finish in one go
+- Cannot pause and wait for user input
+- Cannot resume from where it left off
+- No state persistence between requests
+
+With a checkpointer:
+- The graph can pause at any node (using `interrupt()`)
+- State is saved at each step
+- Can resume from the exact point where it paused
+- Maintains conversation context across multiple API calls
+- Uses `thread_id` to identify different user sessions
+
+**How it works in our system:**
+
+1. **Initial Request**: User sends "Show me sales"
+   - Graph runs: `retrieve_schema` → `check_ambiguity` → detects ambiguity → `ask_clarification`
+   - `ask_clarification` calls `interrupt("What metric would you like?")`
+   - Graph pauses at this node
+   - Checkpointer saves the current state (including the clarification question)
+
+2. **API Response**: Returns clarification question to user
+
+3. **User's Answer**: User sends "total sales amount"
+   - API uses `graph.get_state(config)` with the same `thread_id`
+   - Checkpointer retrieves the saved state
+   - `state.next` shows the graph is paused at `ask_clarification`
+   - API uses `Command(resume="total sales amount")` to resume
+   - Graph continues from where it paused
+   - User's answer is provided to the node
+   - Graph continues: `check_clarification_relevance` → `check_ambiguity` → `generate_sql` → ...
+
+**Key Concepts:**
+
+- **`thread_id`**: Unique identifier for each conversation/session. The checkpointer uses this to store and retrieve state for different users.
+- **`graph.get_state(config)`**: Retrieves the current state of the graph for a given thread_id.
+- **`state.next`**: Shows the next node to execute (if graph is paused). If empty, graph is not paused.
+- **`interrupt()`**: Pauses the graph execution at the current node and returns control to the caller.
+- **`Command(resume=...)`**: Resumes a paused graph with the provided value (user's answer).
+
+**Example Flow:**
+
+```
+Request 1: POST /api/chat
+{
+    "message": "Show me sales",
+    "thread_id": "user-123"
+}
+→ Graph runs, pauses at ask_clarification
+→ Checkpointer saves state
+→ Response: {"status": "clarification_required", "question": "What metric?"}
+
+Request 2: POST /api/chat
+{
+    "message": "total sales amount",
+    "thread_id": "user-123"
+}
+→ graph.get_state() retrieves saved state
+→ state.next shows paused at ask_clarification
+→ Command(resume="total sales amount") resumes graph
+→ Graph continues execution
+→ Response: {"status": "completed", "answer": "..."}
+```
+
+**Types of Checkpointers:**
+
+- **`MemorySaver`**: In-memory checkpointer (for development/testing). State is lost when the process restarts.
+- **`PostgresSaver`**: PostgreSQL-based checkpointer (for production). State persists across restarts.
+- **`SqliteSaver`**: SQLite-based checkpointer (for single-file persistence).
+
+For production, you would replace `MemorySaver` with `PostgresSaver` to persist state in your database.
+
+
+
+Output:
+`graph` → A compiled LangGraph workflow ready for execution
+
+Usage:
+
+```python
+from text_to_sql.graph.build_graph import build_graph
+
+graph = build_graph()
+config = {"configurable": {"thread_id": "user-session-123"}}
+result = graph.invoke({"user_query": "Show me sales"}, config)
+```
+
+
+### Phase 15 — FastAPI Chat Endpoint
+
+File:
+`src/text_to_sql/api/chat.py`
+
+Why do we need this?
+
+The LangGraph workflow is now complete, but we need an HTTP API to interact with it. This phase creates a FastAPI endpoint that accepts user questions, runs the graph workflow, and returns responses. It handles the interrupt/resume pattern for clarification.
+
+Working:
+
+The API has one endpoint: `POST /api/chat`
+
+Request Body:
+```json
+{
+    "message": "Show me sales",
+    "thread_id": "user-session-123"
+}
+```
+
+Response (Clarification Required):
+```json
+{
+    "status": "clarification_required",
+    "question": "What metric would you like to see (e.g., total sales amount or count of sales)?"
+}
+```
+
+Response (Completed):
+```json
+{
+    "status": "completed",
+    "answer": "Your total sales amount for last month was $2,499.00.",
+    "sql": "SELECT SUM(oi.subtotal) AS total_sales ...",
+    "result": [{"total_sales": 2499.00}]
+}
+```
+
+The endpoint handles two scenarios:
+
+1. **Fresh Request** (no paused state):
+   - Creates initial state with all required fields
+   - Invokes the graph
+   - Returns either clarification question or final answer
+
+2. **Resumed Request** (graph is paused waiting for clarification):
+   - Uses `graph.get_state(config)` to check if graph is paused
+   - If paused (`state.next` is not empty), uses `Command(resume=request.message)` to resume
+   - The user's answer is provided to the `ask_clarification` node
+   - Graph continues execution
+   - Returns final answer or another clarification question
+
+The `thread_id` is crucial - it maintains conversation state across multiple requests. Each user session should have a unique thread_id.
+
+Router Configuration:
+
+The router is configured with `prefix="/api"`, so the full endpoint path is `/api/chat`.
+
+Main App:
+
+The chat router is included in the main FastAPI app (`src/text_to_sql/main.py`), which also provides a `/health` endpoint for health checks.
+
+Complete API Routes:
+- `GET /health` - Health check
+- `POST /api/chat` - Chat endpoint with LangGraph workflow
+
+Running the API:
+
+```bash
+uv run uvicorn text_to_sql.main:app --reload
+```
+
+The API will be available at `http://localhost:8000`.
+
+
+

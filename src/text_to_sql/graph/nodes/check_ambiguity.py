@@ -1,14 +1,9 @@
-from pydantic import BaseModel
+import json
+
+from langchain_core.output_parsers import StrOutputParser
 
 from text_to_sql.ai.model_config import get_llm_model
 from text_to_sql.graph.state import AgentState
-
-
-class AmbiguityResult(BaseModel):
-    is_ambiguous: bool
-    ambiguity_type: str
-    missing_slots: list[str]
-    clarification_question: str
 
 
 AMBIGUITY_PROMPT = """
@@ -48,6 +43,9 @@ Rules:
 4. The clarification question should help the user provide
    the exact information required to generate SQL.
 
+Return your response as a JSON object with these exact keys:
+is_ambiguous, ambiguity_type, missing_slots, clarification_question
+
 User question:
 {user_query}
 """
@@ -55,17 +53,33 @@ User question:
 
 def check_ambiguity(state: AgentState):
     user_query = state["user_query"]
-
     if not user_query or not user_query.strip():
         raise ValueError("User query cannot be empty")
 
-    model = get_llm_model().with_structured_output(AmbiguityResult)
+    parser = StrOutputParser()
+    model = get_llm_model() | parser
+    content = model.invoke(AMBIGUITY_PROMPT.format(user_query=user_query))
 
-    result = model.invoke(AMBIGUITY_PROMPT.format(user_query=user_query))
+    # Extract JSON from markdown code blocks if present
+    if "```json" in content:
+        content = content.split("```json")[1].split("```")[0].strip()
+    elif "```" in content:
+        content = content.split("```")[1].split("```")[0].strip()
+
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        # Fallback to default values if JSON parsing fails
+        return {
+            "ambiguity_check": False,
+            "ambiguity_type": "none",
+            "missing_slots": [],
+            "clarification_question": "",
+        }
 
     return {
-        "ambiguity_check": result.is_ambiguous,
-        "ambiguity_type": result.ambiguity_type,
-        "missing_slots": result.missing_slots,
-        "clarification_question": result.clarification_question,
+        "ambiguity_check": parsed.get("is_ambiguous", False),
+        "ambiguity_type": parsed.get("ambiguity_type", "none"),
+        "missing_slots": parsed.get("missing_slots", []),
+        "clarification_question": parsed.get("clarification_question", ""),
     }

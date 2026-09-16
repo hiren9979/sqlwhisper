@@ -15,6 +15,9 @@ from text_to_sql.schema.retriever import retrieve_documents
 from text_to_sql.graph.state import AgentState
 from text_to_sql.graph.nodes.check_ambiguity import check_ambiguity
 from text_to_sql.graph.nodes.generate_sql import generate_sql
+from text_to_sql.graph.nodes.validate_sql import validate_sql_node
+from text_to_sql.graph.nodes.execute_sql import execute_sql
+from text_to_sql.graph.nodes.summarize_answer import summarize_answer
 
 # Load environment variables from .env file
 load_dotenv()
@@ -167,6 +170,60 @@ if __name__ == "__main__":
         
         print(f"✓ Generated SQL query:")
         print(f"  {sql_result['sql_query']}")
+        
+        # Phase 12: Test SQL validation
+        print("\n=== Phase 12: Testing SQL validation ===")
+        
+        # Validate the generated SQL
+        validate_state = {"sql_query": sql_result['sql_query']}
+        validated_result = validate_sql_node(validate_state)
+        
+        print(f"✓ SQL validated successfully:")
+        print(f"  {validated_result['sql_query']}")
+        
+        # Phase 13: Test SQL execution with retry logic
+        print("\n=== Phase 13: Testing SQL execution with retry logic ===")
+        
+        # Test 1: Execute correct SQL
+        print("\nTest 1: Executing correct SQL")
+        execute_state = {"sql_query": validated_result['sql_query'], "retry_count": 0}
+        execution_result = execute_sql(execute_state)
+        
+        if execution_result['sql_error']:
+            print(f"✗ Execution failed: {execution_result['sql_error']}")
+            print(f"  Retry count: {execution_result.get('retry_count', 0)}")
+        else:
+            print(f"✓ Execution successful")
+            print(f"  Rows returned: {len(execution_result['sql_result'])}")
+            if execution_result['sql_result']:
+                print(f"  Sample row: {execution_result['sql_result'][0]}")
+        
+        # Test 2: Execute wrong SQL to test retry
+        print("\nTest 2: Executing wrong SQL (to test retry)")
+        wrong_sql = "SELECT * FROM nonexistent_table"
+        wrong_state = {"sql_query": wrong_sql, "retry_count": 0}
+        wrong_result = execute_sql(wrong_state)
+        
+        if wrong_result['sql_error']:
+            print(f"✗ Execution failed as expected: {wrong_result['sql_error']}")
+            print(f"  Retry count: {wrong_result.get('retry_count', 0)}")
+        else:
+            print(f"✓ Unexpected success")
+        
+        # Phase 14: Test answer summarization
+        print("\n=== Phase 14: Testing answer summarization ===")
+        
+        if execution_result['sql_result']:
+            summarize_state = {
+                "user_query": current_query,
+                "sql_result": execution_result['sql_result']
+            }
+            answer_result = summarize_answer(summarize_state)
+            
+            print(f"✓ Final answer generated:")
+            print(f"  {answer_result['final_answer']}")
+        else:
+            print(f"⚠ Skipping summarization - no SQL results available")
         
     except Exception as e:
         print(f"✗ Connection failed: {e}")

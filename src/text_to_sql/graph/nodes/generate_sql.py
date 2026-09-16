@@ -1,11 +1,7 @@
-from pydantic import BaseModel
+from langchain_core.output_parsers import StrOutputParser
 
 from text_to_sql.ai.model_config import get_llm_model
 from text_to_sql.graph.state import AgentState
-
-
-class SQLGenerationResult(BaseModel):
-    sql_query: str
 
 
 SQL_GENERATION_PROMPT = """
@@ -76,7 +72,8 @@ def generate_sql(state: AgentState):
     if not schema_context:
         raise ValueError("Schema context is required for SQL generation")
 
-    model = get_llm_model()
+    parser = StrOutputParser()
+    model = get_llm_model() | parser
 
     formatted_schema_context = format_schema_context(schema_context)
     few_shot_examples = format_few_shot_examples(schema_context)
@@ -87,9 +84,7 @@ def generate_sql(state: AgentState):
         few_shot_examples=few_shot_examples,
     )
 
-    result = model.invoke(prompt)
-
-    sql_query = result.content.strip()
+    sql_query = model.invoke(prompt).strip()
 
     # Extract SQL from markdown code blocks if present
     if "```sql" in sql_query:

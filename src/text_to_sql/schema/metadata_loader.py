@@ -1,7 +1,5 @@
-from pathlib import Path
-
 import yaml
-
+from pathlib import Path
 from text_to_sql.db.schema_extractor import extract_schema
 
 METADATA_FILE = Path(__file__).with_name("metadata_config.yaml")
