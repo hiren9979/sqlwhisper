@@ -227,8 +227,8 @@ MISTRAL_MODEL=mistral-small-2603
 createdb text-to-sql
 psql text-to-sql -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
-# Run schema migration (if available)
-# Or use your existing database schema
+# Create the conversations and persistent messages tables
+uv run python -m text_to_sql.db.init_db
 ```
 
 ## 🧪 Running Tests

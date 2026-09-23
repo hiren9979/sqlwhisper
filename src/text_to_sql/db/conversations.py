@@ -115,3 +115,44 @@ def get_user_conversations(user_id: uuid.UUID) -> list[dict]:
                 }
                 for row in rows
             ]
+
+
+def add_message(conversation_id: uuid.UUID, role: str, content: str) -> None:
+    """Store one user or assistant message in a conversation."""
+    if role not in {"user", "assistant"}:
+        raise ValueError("Message role must be 'user' or 'assistant'")
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO messages (conversation_id, role, content)
+                VALUES (%s, %s, %s)
+                """,
+                (conversation_id, role, content),
+            )
+            cursor.execute(
+                "UPDATE conversations SET updated_at = NOW() WHERE id = %s",
+                (conversation_id,),
+            )
+            connection.commit()
+
+
+def get_recent_messages(conversation_id: uuid.UUID, limit: int = 20) -> list[dict]:
+    """Return recent conversation messages in chronological order."""
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT role, content
+                FROM messages
+                WHERE conversation_id = %s
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s
+                """,
+                (conversation_id, limit),
+            )
+            return [
+                {"role": row[0], "content": row[1]}
+                for row in reversed(cursor.fetchall())
+            ]

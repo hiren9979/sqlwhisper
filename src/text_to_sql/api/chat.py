@@ -8,7 +8,13 @@ from langgraph.types import Command
 from pydantic import BaseModel
 
 from text_to_sql.config import DATABASE_URL
-from text_to_sql.db.conversations import create_conversation, get_conversation, get_user_conversations
+from text_to_sql.db.conversations import (
+    add_message,
+    create_conversation,
+    get_conversation,
+    get_recent_messages,
+    get_user_conversations,
+)
 from text_to_sql.graph.build_graph import build_graph
 
 router = APIRouter(prefix="/api")
@@ -76,12 +82,15 @@ def chat(request: ChatRequest) -> dict[str, Any]:
 
     config = {"configurable": {"thread_id": thread_id}}
     state = graph.get_state(config)
+    conversation_context = get_recent_messages(conversation_id)
+    add_message(conversation_id, "user", message)
 
     if state.next:
         result = graph.invoke(Command(resume=message), config=config)
     else:
         initial_state = {
             "messages": [],
+            "conversation_context": conversation_context,
             "user_query": message,
             "schema_context": "",
             "ambiguity_check": False,
@@ -97,11 +106,15 @@ def chat(request: ChatRequest) -> dict[str, Any]:
         result = graph.invoke(initial_state, config=config)
 
     if result.get("ambiguity_check"):
+        add_message(conversation_id, "assistant", result["clarification_question"])
         return {"status": "clarification_required", "question": result["clarification_question"]}
 
+    answer = result.get("final_answer")
+    if answer:
+        add_message(conversation_id, "assistant", str(answer))
     return {
         "status": "completed",
-        "answer": result.get("final_answer"),
+        "answer": answer,
         "sql": result.get("sql_query"),
         "result": result.get("sql_result"),
     }

@@ -48,7 +48,16 @@ is_ambiguous, ambiguity_type, missing_slots, clarification_question
 
 User question:
 {user_query}
+
+Recent conversation context (oldest first; may be empty):
+{conversation_context}
 """
+
+
+def format_conversation_context(messages: list[dict[str, str]]) -> str:
+    if not messages:
+        return "No previous messages."
+    return "\n".join(f"{message['role']}: {message['content']}" for message in messages)
 
 
 def check_ambiguity(state: AgentState):
@@ -58,7 +67,10 @@ def check_ambiguity(state: AgentState):
 
     parser = StrOutputParser()
     model = get_llm_model() | parser
-    content = model.invoke(AMBIGUITY_PROMPT.format(user_query=user_query))
+    content = model.invoke(AMBIGUITY_PROMPT.format(
+        user_query=user_query,
+        conversation_context=format_conversation_context(state.get("conversation_context", [])),
+    ))
 
     # Extract JSON from markdown code blocks if present
     if "```json" in content:

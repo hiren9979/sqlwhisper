@@ -5,6 +5,7 @@ from typing import Any, TypedDict
 
 class AgentState(TypedDict, total=False):
     messages: list[Any]
+    conversation_context: list[dict[str, str]]
     user_query: str
     user_answer: str
     schema_context: list[dict[str, Any]]
