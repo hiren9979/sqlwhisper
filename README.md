@@ -50,49 +50,62 @@ Unlike traditional text-to-SQL systems that guess user intent, SQLWhisper active
 - Respects soft-delete patterns and business definitions
 - Uses Groq LLM for SQL generation
 
+### Phase 11: SQL Validation
+- **graph/nodes/validate_sql.py**: Validates generated SQL syntax
+- Checks for dangerous operations and schema compliance
+- Handles validation errors with retry logic
+
+### Phase 12: SQL Execution
+- **graph/nodes/execute_sql.py**: Executes SQL against PostgreSQL database
+- Uses read-only database role with timeout protection
+- Returns query results or error information
+
+### Phase 13: Final Answer Generation
+- **graph/nodes/summarize_answer.py**: Converts SQL results to natural language
+- Formats results for user-friendly display
+- Handles edge cases (empty results, errors)
+
+### Phase 14: Conversation Persistence
+- **db/conversations.py**: Conversation management with PostgreSQL
+- **db/init_checkpoint.py**: LangGraph checkpoint table initialization
+- PostgreSQL-backed LangGraph checkpointer for conversation state persistence
+- Conversation resume functionality across application restarts
+- Thread-based conversation tracking with user association
+
+### Phase 15: FastAPI Chat Endpoint
+- **api/chat.py**: REST API endpoints for chat functionality
+- POST /chat: Process text-to-SQL requests with thread management
+- POST /conversations: Create new conversations
+- GET /conversations/{user_id}: Get user conversations
+- Handles clarification flow across multiple API calls
+
 ### Model Configuration
-- **ai/model_config.py**: Centralized model configuration
-- Embeddings: MistralAI (mistral-embed)
-- LLM: Groq (llama3-70b-8192) for fast, cost-effective inference
+- **ai/model_config.py**: Centralized model configuration with multiple provider support
+- Embeddings: Google Generative AI (gemini-embedding-2)
+- LLM: Configurable provider (Groq, MistralAI, or Google Generative AI)
+- Default: Google Generative AI (gemini-3.5-flash-lite) for efficient inference
 
 ### Testing
-- **tests/test1.py**: Comprehensive integration tests covering all phases
+- **tests/test_end_to_end.py**: Comprehensive integration tests covering all phases
 - Tests database connection, schema extraction, metadata loading, glossary loading
 - Tests embedding generation, ingestion, retrieval
 - Tests ambiguity detection with interactive clarification loop
 - Tests SQL generation with schema context
+- **tests/test_checkpoint_persistence.py**: PostgreSQL checkpoint persistence testing
+- **tests/test_interactive_conversation.py**: Real-time interactive conversation testing
 
 ### API
-- **main.py**: FastAPI application with health endpoint
+- **main.py**: FastAPI application with chat endpoints
+- **api/chat.py**: REST API for conversation management and text-to-SQL processing
 
 ## 🚧 Planned Features
 
-### Phase 11: SQL Validation
-- Validate generated SQL syntax
-- Check for dangerous operations (DROP, DELETE, etc.)
-- Ensure schema compliance
+### Phase 17: Streaming (SSE)
+- Convert `/chat` to stream intermediate state updates via Server-Sent Events
+- Client sees incremental status updates before final answer arrives
+- Error handling for SSE stream interruptions and client disconnections
 
-### Phase 12: SQL Execution
-- Execute SQL using read-only database role
-- Handle execution errors gracefully
-- Return query results
-
-### Phase 13: Final Answer Generation
-- Convert SQL results to natural language
-- Format results for user-friendly display
-- Handle edge cases (empty results, errors)
-
-### Phase 14: Retry Logic
-- Automatic retry on SQL generation failures
-- Incremental error feedback to LLM
-- Max retry limits to prevent infinite loops
-
-### Phase 15: FastAPI Endpoints
-- `/query`: Main endpoint for text-to-SQL conversion
-- `/health`: Health check (already implemented)
-- WebSocket support for real-time clarification
-
-### Phase 16: Frontend
+### Phase 18: Frontend
 - React/Vue.js chat interface
 - Real-time clarification UI
 - Result visualization (tables, charts)
@@ -109,12 +122,16 @@ Ask Clarification (Phase 9)
 Retrieve Schema Context (Phase 6)
     ↓
 Generate SQL (Phase 10)
-    ↓ (planned)
+    ↓
 Validate SQL (Phase 11)
-    ↓ (planned)
+    ↓ (if validation fails)
+Retry SQL Generation
+    ↓ (if valid)
 Execute SQL (Phase 12)
-    ↓ (planned)
+    ↓
 Generate Final Answer (Phase 13)
+    ↓
+PostgreSQL Checkpoint Persistence (Phase 14)
 ```
 
 ## 📁 Project Structure
@@ -123,7 +140,10 @@ Generate Final Answer (Phase 13)
 src/text_to_sql/
 ├── db/
 │   ├── connection.py          # PostgreSQL connection
-│   └── schema_extractor.py    # Live schema extraction
+│   ├── schema_extractor.py    # Live schema extraction
+│   ├── conversations.py       # Conversation management
+│   ├── init_db.py            # Database initialization
+│   └── init_checkpoint.py     # LangGraph checkpoint initialization
 ├── schema/
 │   ├── metadata_config.yaml   # Table/column descriptions
 │   ├── metadata_loader.py     # Merge schema with metadata
@@ -135,15 +155,26 @@ src/text_to_sql/
 │   └── retriever.py           # Retrieve relevant context
 ├── graph/
 │   ├── state.py               # LangGraph state definition
+│   ├── build_graph.py         # Graph construction with checkpointer
 │   └── nodes/
-│       ├── check_ambiguity.py # Ambiguity detection
-│       ├── ask_clarification.py # User clarification
-│       └── generate_sql.py    # SQL generation
+│       ├── check_ambiguity.py         # Ambiguity detection
+│       ├── ask_clarification.py       # User clarification
+│       ├── check_clarification_relevance.py # Clarification relevance check
+│       ├── generate_sql.py            # SQL generation
+│       ├── validate_sql.py            # SQL validation
+│       ├── execute_sql.py            # SQL execution
+│       ├── retrieve_schema.py         # Schema retrieval
+│       └── summarize_answer.py        # Final answer generation
 ├── ai/
 │   └── model_config.py        # Model configuration
-├── main.py                    # FastAPI app
+├── api/
+│   └── chat.py               # REST API endpoints
+├── config.py                 # Application configuration
+├── main.py                   # FastAPI app
 └── tests/
-    └── test1.py               # Integration tests
+    ├── test_end_to_end.py    # Comprehensive integration tests
+    ├── test_checkpoint_persistence.py # Checkpoint persistence tests
+    └── test_interactive_conversation.py # Interactive conversation tests
 ```
 
 ## 🚀 Setup
@@ -172,9 +203,21 @@ cp .env.example .env
 ### Environment Variables
 
 ```env
-MISTRAL_API_KEY=your_mistral_api_key
-GROQ_API_KEY=your_groq_api_key
+# Database
 DATABASE_URL=postgresql://user:password@localhost:5432/dbname
+
+# LLM Provider (groq, mistral, or gemini)
+LLM_PROVIDER=gemini
+
+# API Keys (based on provider)
+GOOGLE_API_KEY=your_google_api_key
+GROQ_API_KEY=your_groq_api_key
+MISTRAL_API_KEY=your_mistral_api_key
+
+# Model Configuration (optional)
+GEMINI_MODEL=gemini-3.5-flash-lite
+GROQ_MODEL=llama-3.1-70b-versatile
+MISTRAL_MODEL=mistral-small-2603
 ```
 
 ### Database Setup
@@ -191,20 +234,27 @@ psql text-to-sql -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ## 🧪 Running Tests
 
 ```bash
-# Run all integration tests
-uv run python src/text_to_sql/tests/test1.py
+# Run end-to-end integration tests
+uv run python src/text_to_sql/tests/test_end_to_end.py
+
+# Run checkpoint persistence tests
+uv run python src/text_to_sql/tests/test_checkpoint_persistence.py
+
+# Run interactive conversation test (real-time)
+uv run python src/text_to_sql/tests/test_interactive_conversation.py
 ```
 
 The test suite covers:
-1. Database connection
-2. Schema extraction
-3. Metadata and glossary loading
-4. Embedding document building
-5. Document ingestion with embeddings
-6. Semantic retrieval
-7. Ambiguity detection
-8. Interactive clarification loop
-9. SQL generation
+1. Database connection and schema extraction
+2. Metadata and glossary loading
+3. Embedding document building and ingestion
+4. Semantic retrieval with vector similarity
+5. Ambiguity detection and clarification flow
+6. SQL generation with schema context
+7. SQL validation and execution
+8. Final answer generation
+9. PostgreSQL checkpoint persistence
+10. Conversation management and resume functionality
 
 ## 🏃 Running the Application
 
@@ -227,23 +277,27 @@ System: "What time period? What metric (total revenue, number of orders)?"
     ↓
 User: "Current month, total revenue"
     ↓
-System: (Retrieves orders, order_items schema)
+System: (Retrieves orders, order_items schema via vector search)
     ↓
-System: (Generates SQL)
+System: (Generates SQL with schema context)
     ↓
-SQL: SELECT SUM(oi.subtotal) AS total_sales
-     FROM orders o
-     JOIN order_items oi ON o.id = oi.order_id
-     WHERE o.order_date >= date_trunc('month', current_timestamp)
-       AND o.order_date < date_trunc('month', current_timestamp) + interval '1 month'
+System: (Validates SQL for safety and correctness)
+    ↓
+System: (Executes SQL against PostgreSQL)
+    ↓
+System: (Converts results to natural language)
+    ↓
+Answer: "The total sales for the current month is $15,234.56"
+    ↓
+System: (Conversation state persisted in PostgreSQL)
 ```
 
 ## 🛠️ Tech Stack
 
 - **Database**: PostgreSQL with pgvector
-- **Embeddings**: MistralAI (mistral-embed)
-- **LLM**: Groq (llama3-70b-8192)
-- **Orchestration**: LangGraph
+- **Embeddings**: Google Generative AI (gemini-embedding-2)
+- **LLM**: Configurable (Google Generative AI, Groq, or MistralAI)
+- **Orchestration**: LangGraph with PostgreSQL checkpoint persistence
 - **API**: FastAPI
 - **Python**: 3.10+
 - **Package Manager**: uv

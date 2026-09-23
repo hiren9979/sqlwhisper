@@ -178,29 +178,17 @@ be *demonstrably working* before moving to the next.
 - [ ] `app/api/chat.py` — `POST /chat` accepting `{message, thread_id}`, invoking the graph, correctly handling interrupt/resume, returning either a clarification question or final answer + SQL + result table.
 - [ ] Verify: full conversation via `curl`/Postman, including a clarification exchange across two calls with the same `thread_id`.
 
-### Phase 16 — Streaming (SSE)
-- [ ] Convert `/chat` to stream intermediate state updates ("retrieving schema...", "generating SQL...") via Server-Sent Events.
-- [ ] Verify: client sees incremental status updates before the final answer arrives.
-
-### Phase 17 — Database Schema for Conversations
-- [ ] Create `conversations` table with `id`, `user_id`, `title`, `created_at`, `updated_at`, and `is_deleted`.
-- [ ] Create migration script or direct SQL to set up the table structure.
-- [ ] Verify: table exists with correct schema and indexes on `user_id` and `created_at`.
-
-### Phase 18 — Conversation Database Operations
-- [ ] `app/db/conversations.py` — CRUD operations: create conversation, list user's conversations, get conversation by ID, update title/timestamp, soft-delete conversation.
-- [ ] Implement conversation title auto-generation based on first message.
-- [ ] Verify: script tests all CRUD operations against the database.
-
-### Phase 19 — LangGraph Postgres Checkpointer Integration
-- [ ] Configure LangGraph `PostgresSaver` for persistent chat state using `conversation.id` as `thread_id`.
-- [ ] Update graph compilation to use `PostgresSaver` instead of `MemorySaver`.
-- [ ] Configure checkpointing to store conversation messages and state in PostgreSQL.
-- [ ] Verify: graph state persists across runs using the same `thread_id`.
-
-### Phase 20 — Agent State Enhancement for Conversations
-- [ ] Update `AgentState` to include `thread_id` and enhanced `messages` array for conversation history.
-- [ ] Ensure state schema supports conversation-level metadata.
+### Phase 16 — PostgreSQL Checkpoint Persistence
+- [ ] 16.1 — Replace MemorySaver with PostgreSQL checkpointer in build_graph
+- [ ] 16.2 — Update chat.py to use persistent PostgreSQL checkpointer
+- [ ] 16.3 — Add psycopg connection management for checkpointer
+- [ ] 16.4 — Create comprehensive checkpoint persistence test
+- [ ] 16.5 — Create interactive conversation test with real-time PostgreSQL persistence
+- [ ] 16.6 — Fix context manager issues with PostgresSaver.from_conn_string
+- [ ] 16.7 — Add proper connection cleanup and error handling
+- [ ] 16.8 — Implement conversation resume functionality across application restarts
+- [ ] 16.9 — Add test for ambiguity/clarification flow with checkpoint persistence
+- [ ] 16.10 — Verify: conversation continues after application restart using same thread_id
 - [ ] Verify: state structure works with LangGraph checkpointing.
 
 ### Phase 21 — Chat API with Conversation Support

@@ -13,6 +13,7 @@ dependencies = [
     "langchain-google-genai>=4.4.0",
     "langchain-mistralai>=1.1.6",
     "langgraph>=1.2.11",
+    "langgraph-checkpoint-postgres>=2.0.0",
     "pgvector>=0.5.0",
     "psycopg[binary]>=3.3.5",
     "psycopg2-binary>=2.9.13",

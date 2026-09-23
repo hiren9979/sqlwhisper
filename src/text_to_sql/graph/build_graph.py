@@ -1,5 +1,7 @@
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
+
+from text_to_sql.config import DATABASE_URL
 
 from text_to_sql.graph.nodes.ask_clarification import ask_clarification
 from text_to_sql.graph.nodes.check_ambiguity import check_ambiguity
@@ -36,7 +38,7 @@ def route_after_execution(state: AgentState):
     return "summarize_answer"
 
 
-def build_graph():
+def build_graph(checkpointer=None):
     graph = StateGraph(AgentState)
 
     # Nodes
@@ -104,6 +106,8 @@ def build_graph():
     # Final answer
     graph.add_edge("summarize_answer", END)
 
-    # Compile with in-memory checkpointer
-    memory = MemorySaver()
-    return graph.compile(checkpointer=memory)
+    # Compile with checkpointer if provided
+    if checkpointer:
+        return graph.compile(checkpointer=checkpointer)
+    else:
+        return graph.compile()

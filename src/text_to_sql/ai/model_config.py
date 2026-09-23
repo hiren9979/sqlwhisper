@@ -10,7 +10,7 @@ load_dotenv()
 def get_embedding_model():
     """Get Google Generative AI embedding model for generating text embeddings."""
     return GoogleGenerativeAIEmbeddings(
-        model="gemini-embedding-001",
+        model="gemini-embedding-2",
         google_api_key=os.getenv("GOOGLE_API_KEY"),
         task_type="RETRIEVAL_DOCUMENT",
         output_dimensionality=1024
@@ -19,19 +19,12 @@ def get_embedding_model():
 
 def get_llm_model():
     """Get LLM model based on the LLM_PROVIDER environment variable."""
-    model_provider = os.getenv("LLM_PROVIDER", "groq").lower()
+    model_provider = os.getenv("LLM_PROVIDER", "gemini").lower()
 
     if model_provider == "groq":
         return ChatGroq(
-            model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            model=os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile"),
             groq_api_key=os.getenv("GROQ_API_KEY")
-        )
-
-    elif model_provider == "cerebras":
-        from langchain_cerebras import ChatCerebras
-        return ChatCerebras(
-            model=os.getenv("CEREBRAS_MODEL", "llama-3.3-70b"),
-            api_key=os.getenv("CEREBRAS_API_KEY")
         )
 
     elif model_provider == "mistral":
@@ -42,19 +35,12 @@ def get_llm_model():
 
     elif model_provider == "gemini":
         return ChatGoogleGenerativeAI(
-            model=os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
-            google_api_key=os.getenv("GOOGLE_API_KEY")
-        )
-
-    elif model_provider == "ollama":
-        from langchain_ollama import ChatOllama
-        return ChatOllama(
-            model=os.getenv("OLLAMA_MODEL", "llama3.1"),
-            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+        google_api_key=os.getenv("GOOGLE_API_KEY")
         )
 
     else:
         raise ValueError(
             f"Unsupported LLM provider: {model_provider}. "
-            "Supported: groq, cerebras, mistral, gemini, ollama"
+            "Supported: groq, mistral, gemini"
         )
