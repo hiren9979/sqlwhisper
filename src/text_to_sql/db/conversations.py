@@ -1,8 +1,30 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any
 
 from text_to_sql.db.connection import get_connection
+
+
+def extract_plain_text(content: Any) -> str:
+    """Extract plain human-readable text from content.
+    
+    Handles:
+    - Plain strings (returned as-is)
+    - Structured LLM objects like [{'type':'text','text':'...'}]
+    - Other objects (converted to string)
+    
+    Never stores signatures, metadata, or raw objects.
+    """
+    if isinstance(content, str):
+        return content
+    
+    # Handle structured LLM output format
+    if isinstance(content, list) and len(content) > 0:
+        if isinstance(content[0], dict) and 'text' in content[0]:
+            return str(content[0]['text'])
+    
+    # Fallback for other types
+    return str(content)
 
 
 def create_conversation(user_id: uuid.UUID, title: Optional[str] = None, conversation_id: Optional[uuid.UUID] = None) -> uuid.UUID:
@@ -117,19 +139,39 @@ def get_user_conversations(user_id: uuid.UUID) -> list[dict]:
             ]
 
 
-def add_message(conversation_id: uuid.UUID, role: str, content: str) -> None:
-    """Store one user or assistant message in a conversation."""
+def add_message(conversation_id: uuid.UUID, role: str, content: Any) -> None:
+    """Store one user or assistant message in a conversation.
+    
+    Extracts plain text from structured content and prevents duplicates.
+    """
     if role not in {"user", "assistant"}:
         raise ValueError("Message role must be 'user' or 'assistant'")
-
+    
+    # Extract plain text content
+    plain_content = extract_plain_text(content)
+    
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            # Check for duplicate message (same role, content, and conversation)
+            cursor.execute(
+                """
+                SELECT id FROM messages 
+                WHERE conversation_id = %s AND role = %s AND content = %s
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (conversation_id, role, plain_content),
+            )
+            if cursor.fetchone():
+                # Duplicate found, skip insertion
+                return
+            
+            # Insert the message with plain text content
             cursor.execute(
                 """
                 INSERT INTO messages (conversation_id, role, content)
                 VALUES (%s, %s, %s)
                 """,
-                (conversation_id, role, content),
+                (conversation_id, role, plain_content),
             )
             cursor.execute(
                 "UPDATE conversations SET updated_at = NOW() WHERE id = %s",

@@ -8,6 +8,10 @@ class AgentState(TypedDict, total=False):
     conversation_context: list[dict[str, str]]
     user_query: str
     user_answer: str
+    user_id: str
+    conversation_id: str
+    user_facts: dict[str, str]
+    relevant_facts: dict[str, str]
     schema_context: list[dict[str, Any]]
     ambiguity_check: bool
     ambiguity_type: str

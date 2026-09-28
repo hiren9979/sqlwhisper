@@ -43,11 +43,16 @@ Rules:
 4. The clarification question should help the user provide
    the exact information required to generate SQL.
 
+5. Use relevant user facts to resolve ambiguity when possible.
+
 Return your response as a JSON object with these exact keys:
 is_ambiguous, ambiguity_type, missing_slots, clarification_question
 
 User question:
 {user_query}
+
+Relevant user facts (may be empty):
+{relevant_facts}
 
 Recent conversation context (oldest first; may be empty):
 {conversation_context}
@@ -60,6 +65,12 @@ def format_conversation_context(messages: list[dict[str, str]]) -> str:
     return "\n".join(f"{message['role']}: {message['content']}" for message in messages)
 
 
+def format_user_facts(user_facts: dict[str, str]) -> str:
+    if not user_facts:
+        return "No relevant user facts."
+    return "\n".join(f"{key}: {value}" for key, value in user_facts.items())
+
+
 def check_ambiguity(state: AgentState):
     user_query = state["user_query"]
     if not user_query or not user_query.strip():
@@ -69,6 +80,7 @@ def check_ambiguity(state: AgentState):
     model = get_llm_model() | parser
     content = model.invoke(AMBIGUITY_PROMPT.format(
         user_query=user_query,
+        relevant_facts=format_user_facts(state.get("relevant_facts", {})),
         conversation_context=format_conversation_context(state.get("conversation_context", [])),
     ))
 

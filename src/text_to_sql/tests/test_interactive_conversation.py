@@ -204,10 +204,10 @@ def parse_uuid(raw: str, label: str) -> Optional[uuid.UUID]:
         return None
 
 
-def prompt_conversation() -> Optional[uuid.UUID]:
+def prompt_conversation() -> tuple[Optional[uuid.UUID], Optional[uuid.UUID]]:
     """Ask for a user and thread ID, then create or resume a conversation.
 
-    Returns the conversation ID, or None if the input was invalid.
+    Returns (conversation_id, user_id), or (None, None) if input was invalid.
     """
     print_section("Conversation Setup")
 
@@ -215,7 +215,7 @@ def prompt_conversation() -> Optional[uuid.UUID]:
     if raw_user_id:
         user_id = parse_uuid(raw_user_id, "user ID")
         if user_id is None:
-            return None
+            return None, None
     else:
         user_id = uuid.uuid4()
         print(f"Generated new user ID: {user_id}")
@@ -227,14 +227,14 @@ def prompt_conversation() -> Optional[uuid.UUID]:
     if raw_thread_id:
         thread_id = parse_uuid(raw_thread_id, "thread ID")
         if thread_id is None:
-            return None
+            return None, None
 
         with step("Looking up conversation"):
             existing = get_conversation(thread_id)
 
         if existing:
             print(f"✓ Resuming existing conversation: {thread_id}")
-            return thread_id
+            return thread_id, user_id
 
         print("✗ Conversation not found, creating a new one")
 
@@ -246,7 +246,7 @@ def prompt_conversation() -> Optional[uuid.UUID]:
             conversation_id=conversation_id,
         )
     print(f"✓ Created new conversation: {conversation_id}")
-    return conversation_id
+    return conversation_id, user_id
 
 
 def build_config(conversation_id: uuid.UUID) -> dict:
@@ -258,13 +258,15 @@ def build_config(conversation_id: uuid.UUID) -> dict:
 
 
 def get_initial_state(
-    user_query: str, conversation_context: list[dict[str, str]]
+    user_query: str, user_id: str, conversation_id: str
 ) -> dict[str, Any]:
     """Return the initial graph state for a new user query."""
     return {
         "messages": [],
-        "conversation_context": conversation_context,
+        "conversation_context": [],
         "user_query": user_query,
+        "user_id": user_id,
+        "conversation_id": conversation_id,
         "schema_context": "",
         "ambiguity_check": False,
         "ambiguity_type": "",
@@ -312,21 +314,20 @@ def print_outcome(state) -> None:
 
 
 def process_message(
-    graph, config: dict, conversation_id: uuid.UUID, user_input: str
+    graph, config: dict, conversation_id: uuid.UUID, user_input: str, user_id: str
 ) -> None:
     """Run the graph for one user message, resuming if it is awaiting an answer."""
     with step("Loading checkpoint"):
         state = graph.get_state(config)
 
-    conversation_context = get_recent_messages(conversation_id)
     add_message(conversation_id, "user", user_input)
 
     if get_pending_interrupts(state):
         print("🔄 Resuming with your clarification...", flush=True)
-        graph_input: Any = Command(resume=user_input)
+        graph_input: Any = Command(resume=user_input, update={"conversation_id": str(conversation_id), "user_id": user_id})
     else:
         print("🚀 Starting new graph execution...", flush=True)
-        graph_input = get_initial_state(user_input, conversation_context)
+        graph_input = get_initial_state(user_input, user_id, str(conversation_id))
 
     run_graph(graph, graph_input, config)
 
@@ -354,8 +355,8 @@ def run_interactive_session() -> int:
     graph, conn = initialize_graph()
 
     try:
-        conversation_id = prompt_conversation()
-        if conversation_id is None:
+        conversation_id, user_id = prompt_conversation()
+        if conversation_id is None or user_id is None:
             print("✗ Failed to setup conversation")
             return 1
 
@@ -374,11 +375,12 @@ def run_interactive_session() -> int:
                 break
 
             if command == "clear":
-                new_id = prompt_conversation()
-                if new_id is None:
+                new_id, new_user_id = prompt_conversation()
+                if new_id is None or new_user_id is None:
                     print("✗ Failed to setup new conversation, keeping current one")
                     continue
                 conversation_id = new_id
+                user_id = new_user_id
                 config = build_config(conversation_id)
                 print("✓ New conversation started")
                 continue
@@ -388,7 +390,7 @@ def run_interactive_session() -> int:
                 continue
 
             try:
-                process_message(graph, config, conversation_id, user_input)
+                process_message(graph, config, conversation_id, user_input, str(user_id))
             except KeyboardInterrupt:
                 print("\n⛔ Request cancelled. You can ask another question.")
             except Exception as exc:

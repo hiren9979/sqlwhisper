@@ -19,11 +19,11 @@ def get_embedding_model():
 
 def get_llm_model():
     """Get LLM model based on the LLM_PROVIDER environment variable."""
-    model_provider = os.getenv("LLM_PROVIDER", "gemini").lower()
+    model_provider = os.getenv("LLM_PROVIDER", "groq").lower()
 
     if model_provider == "groq":
         return ChatGroq(
-            model=os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile"),
+            model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
             groq_api_key=os.getenv("GROQ_API_KEY")
         )
 
@@ -34,10 +34,30 @@ def get_llm_model():
         )
 
     elif model_provider == "gemini":
-        return ChatGoogleGenerativeAI(
-        model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
-        google_api_key=os.getenv("GOOGLE_API_KEY")
+        primary_model = ChatGoogleGenerativeAI(
+            model="gemini-3.6-flash",
+            google_api_key=os.getenv("GOOGLE_API_KEY"),
+            max_retries=2,
+            timeout=30
         )
+        
+        # Add fallback models for better reliability
+        fallback_models = [
+            ChatGoogleGenerativeAI(
+                model="gemini-3.5-flash",
+                google_api_key=os.getenv("GOOGLE_API_KEY"),
+                max_retries=2,
+                timeout=30
+            ),
+            ChatGoogleGenerativeAI(
+                model="gemini-3.1-flash-lite",
+                google_api_key=os.getenv("GOOGLE_API_KEY"),
+                max_retries=2,
+                timeout=30
+            ),
+        ]
+        
+        return primary_model.with_fallbacks(fallback_models)
 
     else:
         raise ValueError(

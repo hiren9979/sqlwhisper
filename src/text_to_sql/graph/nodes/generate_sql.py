@@ -28,9 +28,13 @@ Rules:
 9. Do not use SELECT * unless it is clearly appropriate.
 10. Do not add explanations.
 11. Return exactly one SQL query.
+12. Use relevant user facts to personalize queries when appropriate.
 
 Resolved user question:
 {user_query}
+
+Relevant user facts (may be empty):
+{relevant_facts}
 
 Relevant schema and business context:
 {schema_context}
@@ -61,10 +65,17 @@ def format_few_shot_examples(schema_context):
     return "\n\n".join(doc["content"] for doc in examples[:3])
 
 
+def format_user_facts(user_facts: dict[str, str]) -> str:
+    if not user_facts:
+        return "No known user facts."
+    return "\n".join(f"{key}: {value}" for key, value in user_facts.items())
+
+
 def generate_sql(state: AgentState):
     """Generate PostgreSQL SQL from the resolved user question."""
     user_query = state.get("user_query", "")
     schema_context = state.get("schema_context", [])
+    relevant_facts = state.get("relevant_facts", {})
 
     if not user_query.strip():
         raise ValueError("User query cannot be empty")
@@ -77,9 +88,11 @@ def generate_sql(state: AgentState):
 
     formatted_schema_context = format_schema_context(schema_context)
     few_shot_examples = format_few_shot_examples(schema_context)
+    formatted_relevant_facts = format_user_facts(relevant_facts)
 
     prompt = SQL_GENERATION_PROMPT.format(
         user_query=user_query,
+        relevant_facts=formatted_relevant_facts,
         schema_context=formatted_schema_context,
         few_shot_examples=few_shot_examples,
     )

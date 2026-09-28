@@ -82,16 +82,19 @@ def chat(request: ChatRequest) -> dict[str, Any]:
 
     config = {"configurable": {"thread_id": thread_id}}
     state = graph.get_state(config)
-    conversation_context = get_recent_messages(conversation_id)
+    
+    # Don't load conversation_context here - let the graph handle it
     add_message(conversation_id, "user", message)
 
     if state.next:
-        result = graph.invoke(Command(resume=message), config=config)
+        result = graph.invoke(Command(resume=message, update={"conversation_id": thread_id, "user_id": user_id_str}), config=config)
     else:
         initial_state = {
             "messages": [],
-            "conversation_context": conversation_context,
+            "conversation_context": [],
             "user_query": message,
+            "user_id": user_id_str,
+            "conversation_id": thread_id,
             "schema_context": "",
             "ambiguity_check": False,
             "ambiguity_type": "",

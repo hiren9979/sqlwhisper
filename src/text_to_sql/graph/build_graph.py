@@ -8,8 +8,14 @@ from text_to_sql.graph.nodes.check_ambiguity import check_ambiguity
 from text_to_sql.graph.nodes.check_clarification_relevance import check_clarification_relevance
 from text_to_sql.graph.nodes.execute_sql import execute_sql
 from text_to_sql.graph.nodes.generate_sql import generate_sql
+from text_to_sql.graph.nodes.load_conversation_context import load_conversation_context
 from text_to_sql.graph.nodes.retrieve_schema import retrieve_schema
 from text_to_sql.graph.nodes.summarize_answer import summarize_answer
+from text_to_sql.graph.nodes.user_facts import (
+    extract_user_facts,
+    retrieve_user_facts,
+    select_relevant_facts_node,
+)
 from text_to_sql.graph.nodes.validate_sql import validate_sql_node
 from text_to_sql.graph.state import AgentState
 
@@ -42,6 +48,10 @@ def build_graph(checkpointer=None):
     graph = StateGraph(AgentState)
 
     # Nodes
+    graph.add_node("load_conversation_context", load_conversation_context)
+    graph.add_node("retrieve_user_facts", retrieve_user_facts)
+    graph.add_node("select_relevant_facts", select_relevant_facts_node)
+    graph.add_node("extract_user_facts", extract_user_facts)
     graph.add_node("retrieve_schema", retrieve_schema)
     graph.add_node("check_ambiguity", check_ambiguity)
     graph.add_node("ask_clarification", ask_clarification)
@@ -52,7 +62,12 @@ def build_graph(checkpointer=None):
     graph.add_node("summarize_answer", summarize_answer)
 
     # Start
-    graph.add_edge(START, "retrieve_schema")
+    graph.add_edge(START, "load_conversation_context")
+
+    # Load context → retrieve facts → select relevant → schema
+    graph.add_edge("load_conversation_context", "retrieve_user_facts")
+    graph.add_edge("retrieve_user_facts", "select_relevant_facts")
+    graph.add_edge("select_relevant_facts", "retrieve_schema")
 
     # Schema → ambiguity check
     graph.add_edge("retrieve_schema", "check_ambiguity")
@@ -103,8 +118,9 @@ def build_graph(checkpointer=None):
         },
     )
 
-    # Final answer
-    graph.add_edge("summarize_answer", END)
+    # Final answer → extract facts → end
+    graph.add_edge("summarize_answer", "extract_user_facts")
+    graph.add_edge("extract_user_facts", END)
 
     # Compile with checkpointer if provided
     if checkpointer:
